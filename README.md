@@ -8,7 +8,7 @@ Using Ubuntu, I couldn't get any reliable information from Domoticz Native 'Moth
 ## Installation:
 Please install the 'psutil' Python module first:
 
-### sudo pip3 install psutil
+###   sudo pip3 install psutil
 
 When you first enable this Plugin It provides:
 - CPU Usage Percentage
