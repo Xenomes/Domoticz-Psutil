@@ -1,6 +1,6 @@
 # DomoticzPsutil
 
-Motherboard Sensors using Python Psutil module
+Motherboard Sensors using Python Psutil module.
 This Domoticz Plugin is still in Beta ...
 
 Using Ubuntu, I couşdn't get any reliable information from Domoticz Native 'Motherboard Sensors' plugin. Especially the empty space for HDD was always giving wrong counts. So I wrote this plugin for my own needs and dedide to give up on native 'Motherboard Sensors'.
