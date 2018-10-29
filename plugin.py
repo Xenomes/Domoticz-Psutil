@@ -1,5 +1,5 @@
 """
-<plugin key="Psutil" name="PSUtil Motherboard Sensors" author="febalci" version="0.1">
+<plugin key="Psutil" name="PSUtil Motherboard Sensors" author="febalci" version="0.2">
     <description>
         <h2>Psutil Plugin</h2><br/>
         <h3>Features</h3>
@@ -27,6 +27,9 @@
     </params>
 </plugin>
 """
+
+#0.2 Bugfix: Disk Usage shows wrong device when df -h list order changes.
+#0.1 First Commit
 
 import Domoticz
 import sys
@@ -67,11 +70,13 @@ class BasePlugin:
         Domoticz.Debug(str(self.partitions))
         self.number_of_disks = len(self.partitions)
         Domoticz.Debug("Number of Devices = " + str(self.partitions))
+
         if (len(Devices) == 0):
             Domoticz.Device(Name="CPU", Unit=1, TypeName="Percentage", Used=1).Create()
             Domoticz.Device(Name="Memory", Unit=2, TypeName="Percentage", Used=1).Create()
             for newdevice in list(range(self.number_of_disks)):
-                Domoticz.Device(Name=self.partitions[newdevice].mountpoint, Unit=10+newdevice, TypeName="Percentage", Used=0).Create()
+                Domoticz.Device(Name=self.partitions[newdevice].mountpoint, Unit=10+newdevice, TypeName="Percentage", Used=1, Description=str(self.partitions[newdevice].mountpoint)).Create()
+                Devices[10+newdevice].Update(0,"0",Description = self.partitions[newdevice].mountpoint)
 
             if hasattr(psutil, "sensors_temperatures"):
                 temps = psutil.sensors_temperatures()
@@ -146,9 +151,14 @@ class BasePlugin:
 
             for newdevice in list(range(self.number_of_disks)):
                 Domoticz.Debug(str(newdevice))
+
                 if self.partitions[newdevice].fstype != '':
                     disk_percent = psutil.disk_usage(self.partitions[newdevice].mountpoint)
-                    UpdateDevice(10+newdevice,0,disk_percent.percent)
+
+                    for processeddevice in list(range(self.number_of_disks)):
+                        Domoticz.Debug(self.partitions[newdevice].mountpoint+' - '+Devices[10+processeddevice].Description)
+                        if (self.partitions[newdevice].mountpoint == Devices[10+processeddevice].Description):
+                            UpdateDevice(10+processeddevice,0,disk_percent.percent)
                 else:
                     UpdateDevice(10+newdevice,0,0)
                 Domoticz.Debug(str(disk_percent))
