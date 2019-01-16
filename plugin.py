@@ -1,5 +1,5 @@
 """
-<plugin key="Psutil" name="PSUtil Motherboard Sensors" author="febalci" version="0.2">
+<plugin key="Psutil" name="PSUtil Motherboard Sensors" author="febalci" version="0.3">
     <description>
         <h2>Psutil Plugin</h2><br/>
         <h3>Features</h3>
@@ -18,6 +18,12 @@
     </description>
     <params>
         <param field="Mode2" label="Poll Period (min)" width="75px" required="true" default="1"/>
+        <param field="Mode3" label="Mounted Network Drives" width="75px">
+            <options>
+                <option label="True" value="True" default="true" />
+                <option label="False" value="False"/>
+            </options>
+        </param>
         <param field="Mode6" label="Debug" width="75px">
             <options>
                 <option label="True" value="Debug"/>
@@ -27,27 +33,22 @@
     </params>
 </plugin>
 """
-
+#0.3 Bugfix: Dish Usage order again...
+#    New: Include network mounted disks
 #0.2 Bugfix: Disk Usage shows wrong device when df -h list order changes.
 #0.1 First Commit
 
 import Domoticz
 import sys
-# For Windows
-#sys.path.append('C:\Program Files (x86)\Python36-32\Lib\site-packages')
-# For Ubuntu
-#sys.path.append('/usr/local/lib/python3.6/dist-packages')
-# For OSX
-#sys.path.append('/usr/local/lib/python3.7/site-packages')
-# Thanks to https://github.com/kofec for this simple Python modules directory find part:
 import site
+
 path=''
 path=site.getsitepackages()
 for i in path:
     sys.path.append(i)
 
 import psutil
-
+import json
 
 class BasePlugin:
 
@@ -59,6 +60,8 @@ class BasePlugin:
         self.tempexist = False
         self.fanexist = False
         self.batteryexist = False
+        self.number_of_added_disks = 0
+        self.jsonDisks = {}
         return
 
     def onStart(self):
@@ -66,17 +69,39 @@ class BasePlugin:
         if Parameters["Mode6"] == "Debug":
             Domoticz.Debugging(1)
 
-        self.partitions = psutil.disk_partitions()
+        self.partitions = psutil.disk_partitions(all=True)
         Domoticz.Debug(str(self.partitions))
         self.number_of_disks = len(self.partitions)
         Domoticz.Debug("Number of Devices = " + str(self.partitions))
 
         if (len(Devices) == 0):
+
             Domoticz.Device(Name="CPU", Unit=1, TypeName="Percentage", Used=1).Create()
             Domoticz.Device(Name="Memory", Unit=2, TypeName="Percentage", Used=1).Create()
+
+            icounter = 0
+            self.jsonDisks = {}
+
             for newdevice in list(range(self.number_of_disks)):
-                Domoticz.Device(Name=self.partitions[newdevice].mountpoint, Unit=10+newdevice, TypeName="Percentage", Used=1, Description=str(self.partitions[newdevice].mountpoint)).Create()
-                Devices[10+newdevice].Update(0,"0",Description = self.partitions[newdevice].mountpoint)
+# Include here the missing FileSystem type you would like to see:
+                if self.partitions[newdevice].fstype == 'apfs' or self.partitions[newdevice].fstype == 'NTFS' \
+                 or self.partitions[newdevice].fstype == 'ntfs' or self.partitions[newdevice].fstype == 'ext4':
+                    icounter += 1
+                    self.jsonDisks[str(icounter)] = {}
+                    self.jsonDisks[str(icounter)]['Mount'] = self.partitions[newdevice].mountpoint
+                    Domoticz.Device(Name=self.partitions[newdevice].mountpoint, Unit=9+icounter, TypeName="Percentage", Used=0).Create()
+# Include here the missing FileSystem for the mounted network drive you would like to see:          
+                elif self.partitions[newdevice].fstype == 'nfs' or self.partitions[newdevice].fstype == 'nfs4' \
+                 or self.partitions[newdevice].fstype == 'cifs' or self.partitions[newdevice].fstype == 'smbfs':
+                    if Parameters["Mode3"] == "True":
+                        icounter += 1
+                        self.jsonDisks[str(icounter)] = {}
+                        self.jsonDisks[str(icounter)]['Mount'] = self.partitions[newdevice].mountpoint
+                        Domoticz.Device(Name=self.partitions[newdevice].mountpoint, Unit=9+icounter, TypeName="Percentage", Used=0).Create()
+            
+            with open(Parameters["HomeFolder"]+"diskorder.txt","w") as f:
+                json.dump(self.jsonDisks,f, indent=4)
+            self.number_of_added_disks = icounter
 
             if hasattr(psutil, "sensors_temperatures"):
                 temps = psutil.sensors_temperatures()
@@ -114,6 +139,10 @@ class BasePlugin:
             else:
                 Domoticz.Log('Platform Not Supported For Battery...')
 
+        else:
+            with open(Parameters["HomeFolder"]+"diskorder.txt") as f:
+                self.jsonDisks = json.load(f)
+                self.number_of_added_disks = len(self.jsonDisks)
 
         Domoticz.Debug("Devices created.")
         DumpConfigToLog()
@@ -149,19 +178,18 @@ class BasePlugin:
             mem_percent = mem.percent
             UpdateDevice(2,0,mem_percent)
 
-            for newdevice in list(range(self.number_of_disks)):
-                Domoticz.Debug(str(newdevice))
+            self.partitions = psutil.disk_partitions(all=True)
+            self.number_of_disks = len(self.partitions)
 
+            for newdevice in list(range(self.number_of_disks)):
                 if self.partitions[newdevice].fstype != '':
                     disk_percent = psutil.disk_usage(self.partitions[newdevice].mountpoint)
+                    Domoticz.Debug(self.partitions[newdevice].mountpoint+str(disk_percent))
 
-                    for processeddevice in list(range(self.number_of_disks)):
-                        Domoticz.Debug(self.partitions[newdevice].mountpoint+' - '+Devices[10+processeddevice].Description)
-                        if (self.partitions[newdevice].mountpoint == Devices[10+processeddevice].Description):
+                    for processeddevice in list(range(self.number_of_added_disks)):
+                        Domoticz.Debug(self.partitions[newdevice].mountpoint+' - '+self.jsonDisks[str(processeddevice+1)]["Mount"])
+                        if (self.partitions[newdevice].mountpoint == self.jsonDisks[str(processeddevice+1)]["Mount"]):
                             UpdateDevice(10+processeddevice,0,disk_percent.percent)
-                else:
-                    UpdateDevice(10+newdevice,0,0)
-                Domoticz.Debug(str(disk_percent))
 
             if hasattr(psutil, "sensors_temperatures"):
                 temps = psutil.sensors_temperatures()
